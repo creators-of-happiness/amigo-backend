@@ -33,3 +33,9 @@ docker run --rm -p 8080:8080 \
   -e PORT=8080 -e GIN_MODE=release \
   --name amigo amigo-backend:local
 ```
+
+## Docker Compose
+
+```bash
+docker compose up --build
+```

@@ -1,0 +1,10 @@
+services:
+  api:
+    build:
+      context: .
+    image: amigo-backend:local
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - GIN_MODE=release

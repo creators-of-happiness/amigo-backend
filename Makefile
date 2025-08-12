@@ -4,7 +4,7 @@ run:
 	@GIN_MODE=debug @PORT=8080 go run ./...
 
 build:
-	@go build -o bin/app .
+	@CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/app .
 
 test:
 	@go test ./...

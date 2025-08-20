@@ -1,0 +1,9 @@
+.git
+bin/
+*.log
+*.md
+Dockerfile
+docker-compose.yml
+.env
+.env.*
+**/.DS_Store

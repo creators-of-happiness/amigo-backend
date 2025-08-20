@@ -2,7 +2,8 @@
 
 ## Requirements
 - Go 1.24.5+
-- Make (optional)
+- Make
+- PostgreSQL 16+
 - Docker & Docker Compose (optional)
 
 ## Setup
@@ -17,12 +18,6 @@ cp .env.example .env
 make run
 # or
 make run-bin
-```
-
-### Build
-```bash
-make build
-./bin/app
 ```
 
 ## Docker Compose

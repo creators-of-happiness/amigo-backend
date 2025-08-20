@@ -38,3 +38,5 @@ go.work.sum
 
 # OS-specific
 Thumbs.db
+
+.env

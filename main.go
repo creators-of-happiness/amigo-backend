@@ -25,14 +25,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("postgres connect failed: %v", err)
 	}
-	// 시작시 간단 핑으로 조기검증(선택)
-	{
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if err := pool.Ping(ctx); err != nil {
-			log.Fatalf("postgres ping failed: %v", err)
-		}
-	}
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())

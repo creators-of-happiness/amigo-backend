@@ -50,5 +50,17 @@ services:
     command: >
       "migrate -path /migrations -database $$DATABASE_URL up"
 
+  swagger:
+    image: swaggerapi/swagger-ui:latest
+    ports:
+      - "8004:8080"
+    volumes:
+      - ./openapi.yaml:/usr/share/nginx/html/openapi.yaml:ro
+    environment:
+      URL: /openapi.yaml
+    depends_on:
+      api:
+        condition: service_started
+
 volumes:
   postgres-data:

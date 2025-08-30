@@ -1,0 +1,336 @@
+openapi: 3.0.3
+info:
+  title: amigo-backend API
+  version: "0.1.0"
+  description: >
+    Simple backend with phone-based OTP auth, health checks, and a few utility endpoints.
+    All paths prefixed with `/api/v1` are the public API; `/liveness` and `/readiness` are root-level health endpoints.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: /
+    description: Relative (behind reverse proxy)
+
+tags:
+  - name: Health
+    description: Process and dependency health
+  - name: Auth
+    description: OTP-based login
+  - name: Misc
+    description: Utilities & demo endpoints
+
+paths:
+  /liveness:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: Always returns OK if the process is alive.
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /readiness:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: Checks DB connectivity and returns overall status.
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Degraded / not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /api/v1/ping:
+    get:
+      tags: [Misc]
+      summary: Ping
+      description: Returns a simple pong payload.
+      responses:
+        "200":
+          description: Pong
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: pong
+
+  /api/v1/dbtime:
+    get:
+      tags: [Misc]
+      summary: Database time
+      description: Returns the current timestamp from PostgreSQL (`SELECT NOW()`).
+      responses:
+        "200":
+          description: Current DB timestamp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DBTime"
+        "500":
+          description: DB error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/me:
+    get:
+      tags: [Misc]
+      summary: Current user info
+      description: Returns the authenticated user's id/phone/nickname. Requires Bearer token.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/request-code:
+    post:
+      tags: [Auth]
+      summary: Request OTP code (dev mode)
+      description: >
+        Logs an OTP request and **returns a fixed dev hint code** (no SMS is sent).
+        The fixed code and expiration are configured via environment variables.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRequestCodeRequest"
+            examples:
+              default:
+                value:
+                  phone: "+82 10-1234-5678"
+                  purpose: "login"
+      responses:
+        "200":
+          description: Code issued (dev mode)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRequestCodeResponse"
+              examples:
+                default:
+                  value:
+                    ok: true
+                    message: "verification code sent (dev: fixed code active)"
+                    dev_hintCode: "000000"
+        "400":
+          description: Invalid input (e.g., bad phone format)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/verify:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and issue access token
+      description: >
+        Verifies the provided code against the **fixed dev code**.
+        On first login, a user record is created. Returns a signed JWT access token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthVerifyRequest"
+            examples:
+              default:
+                value:
+                  phone: "+82 10-1234-5678"
+                  code: "000000"
+                  nickname: "hyo"
+      responses:
+        "200":
+          description: Authenticated; token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthVerifyResponse"
+              examples:
+                default:
+                  value:
+                    token_type: "Bearer"
+                    access_token: "<jwt>"
+                    expires_in: 86399
+                    user:
+                      id: "8a4f2f0a-0c2a-4a86-8a60-6d6d9b1b5a6a"
+                      phone: "+82 10-1234-5678"
+                      nickname: "hyo"
+        "400":
+          description: Invalid input (e.g., bad phone format, missing fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error (e.g., DB write failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Overall status ("ok" or "degraded")
+          example: ok
+        db:
+          type: string
+          nullable: true
+          description: Optional DB error details when degraded
+      required:
+        - status
+
+    DBTime:
+      type: object
+      properties:
+        now:
+          type: string
+          format: date-time
+          example: "2025-08-31T07:20:00+09:00"
+      required:
+        - now
+
+    MeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: User UUID (from JWT claim)
+          example: "8a4f2f0a-0c2a-4a86-8a60-6d6d9b1b5a6a"
+        phone:
+          type: string
+          example: "+82 10-1234-5678"
+        nickname:
+          type: string
+          nullable: true
+          example: "hyo"
+      required: [id, phone]
+
+    AuthRequestCodeRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          description: E.164-like or liberal phone format accepted by backend
+          example: "+82 10-1234-5678"
+        purpose:
+          type: string
+          description: Purpose of the OTP
+          default: login
+          example: login
+      required: [phone]
+
+    AuthRequestCodeResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "verification code sent (dev: fixed code active)"
+        dev_hintCode:
+          type: string
+          description: Fixed code for development
+          example: "000000"
+      required: [ok, message]
+
+    AuthVerifyRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          example: "+82 10-1234-5678"
+        code:
+          type: string
+          example: "000000"
+        nickname:
+          type: string
+          description: Optional nickname for first-time users
+          example: "hyo"
+      required: [phone, code]
+
+    AuthVerifyResponse:
+      type: object
+      properties:
+        token_type:
+          type: string
+          example: Bearer
+        access_token:
+          type: string
+          description: JWT access token (HS256)
+          example: "<jwt>"
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+          example: 86400
+        user:
+          $ref: "#/components/schemas/User"
+      required: [token_type, access_token, expires_in, user]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "8a4f2f0a-0c2a-4a86-8a60-6d6d9b1b5a6a"
+        phone:
+          type: string
+          example: "+82 10-1234-5678"
+        nickname:
+          type: string
+          nullable: true
+          example: "hyo"
+      required: [id, phone]
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "invalid token"

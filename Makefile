@@ -1,4 +1,4 @@
-.PHONY: run run-bin build test tidy vet fmt clean compose-up compose-down compose-psql
+.PHONY: run run-bin build test tidy vet fmt clean compose-up compose-down compose-psql compose-logs
 
 run:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
@@ -27,7 +27,7 @@ clean:
 	@rm -rf bin/
 
 compose-up:
-	@docker compose up --build
+	@docker compose up -d --build
 
 compose-down:
 	@docker compose down -v
@@ -35,3 +35,6 @@ compose-down:
 compose-psql:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
 	docker compose exec db psql -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+
+compose-logs:
+	@docker compose logs -f

@@ -15,7 +15,9 @@ import (
 	"github.com/creators-of-happiness/amigo-backend/internal/db"
 	"github.com/creators-of-happiness/amigo-backend/internal/handlers/auth"
 	"github.com/creators-of-happiness/amigo-backend/internal/handlers/health"
+	"github.com/creators-of-happiness/amigo-backend/internal/handlers/meta"
 	"github.com/creators-of-happiness/amigo-backend/internal/handlers/misc"
+	"github.com/creators-of-happiness/amigo-backend/internal/handlers/profile"
 	"github.com/creators-of-happiness/amigo-backend/internal/httpserver"
 )
 
@@ -40,8 +42,10 @@ func main() {
 
 	// API v1
 	v1 := r.Group("/api/v1")
-	misc.Register(v1, pool, cfg.AuthSecret) // /ping, /dbtime, /me
-	auth.Register(v1, pool, cfg)            // /auth/request-code, /auth/verify
+	misc.Register(v1, pool, cfg.AuthSecret)    // /ping, /dbtime, /me
+	auth.Register(v1, pool, cfg)               // /auth/request-code, /auth/verify
+	meta.Register(v1, pool, cfg.AuthSecret)    // /meta/* (리스트 조회)
+	profile.Register(v1, pool, cfg.AuthSecret) // /me/* (단계별 설정)
 
 	// HTTP 서버 + graceful shutdown
 	srv := httpserver.New(":"+cfg.Port, r)

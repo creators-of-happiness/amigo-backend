@@ -3,8 +3,8 @@ info:
   title: amigo-backend API
   version: "0.1.0"
   description: >
-    Simple backend with phone-based OTP auth, health checks, and a few utility endpoints.
-    All paths prefixed with `/api/v1` are the public API; `/liveness` and `/readiness` are root-level health endpoints.
+    Simple backend with phone-based OTP auth, health checks, onboarding, and utility endpoints.
+    All paths prefixed with `/api/v1` are public API; `/liveness` and `/readiness` are root-level health endpoints.
 
 servers:
   - url: http://localhost:8080
@@ -19,6 +19,10 @@ tags:
     description: OTP-based login
   - name: Misc
     description: Utilities & demo endpoints
+  - name: Meta
+    description: Reference data for onboarding
+  - name: Profile
+    description: Step-by-step onboarding for current user
 
 paths:
   /liveness:
@@ -202,6 +206,284 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/meta/regions:
+    get:
+      tags: [Meta]
+      summary: List regions
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Regions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string }
+                        latitude: { type: number, format: double, nullable: true }
+                        longitude: { type: number, format: double, nullable: true }
+
+  /api/v1/meta/job-categories:
+    get:
+      tags: [Meta]
+      summary: List job categories
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Job categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string }
+                        name: { type: string }
+
+  /api/v1/meta/character-categories:
+    get:
+      tags: [Meta]
+      summary: List character categories
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Character categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string }
+                        name: { type: string }
+
+  /api/v1/meta/characters:
+    get:
+      tags: [Meta]
+      summary: List characters
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: category
+          schema: { type: string }
+      responses:
+        "200":
+          description: Characters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        preview_url: { type: string, nullable: true }
+
+  /api/v1/meta/backgrounds:
+    get:
+      tags: [Meta]
+      summary: List backgrounds
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Backgrounds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        preview_url: { type: string, nullable: true }
+
+  /api/v1/me/onboarding-state:
+    get:
+      tags: [Profile]
+      summary: Onboarding completion flags
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Flags by step
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nickname: { type: boolean }
+                  gender: { type: boolean }
+                  birthdate: { type: boolean }
+                  region: { type: boolean }
+                  job: { type: boolean }
+                  avatar: { type: boolean }
+                  photo: { type: boolean }
+
+  /api/v1/me/nickname:
+    patch:
+      tags: [Profile]
+      summary: Set nickname
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nickname]
+              properties:
+                nickname: { type: string, minLength: 1, maxLength: 30 }
+      responses:
+        "200":
+          description: OK
+
+  /api/v1/me/gender:
+    patch:
+      tags: [Profile]
+      summary: Set gender
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gender]
+              properties:
+                gender:
+                  type: string
+                  enum: [male, female, other]
+      responses:
+        "200":
+          description: OK
+
+  /api/v1/me/birthdate:
+    patch:
+      tags: [Profile]
+      summary: Set birth date (YYYY-MM-DD)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [birthdate]
+              properties:
+                birthdate: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+
+  /api/v1/me/region:
+    patch:
+      tags: [Profile]
+      summary: Set region
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [region_id]
+              properties:
+                region_id: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: OK
+
+  /api/v1/me/job:
+    put:
+      tags: [Profile]
+      summary: Set job
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category]
+              properties:
+                category: { type: string, description: job_category.code }
+                detail: { type: string }
+      responses:
+        "200":
+          description: OK
+
+  /api/v1/me/avatar:
+    put:
+      tags: [Profile]
+      summary: Set avatar (character + background)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [character_id, bg_id]
+              properties:
+                category_code: { type: string, nullable: true }
+                character_id: { type: string }
+                bg_id: { type: string }
+      responses:
+        "200":
+          description: OK
+
+  /api/v1/me/photo:
+    patch:
+      tags: [Profile]
+      summary: Set profile photo by URL
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+      responses:
+        "200":
+          description: OK
 
 components:
   securitySchemes:

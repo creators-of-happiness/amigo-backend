@@ -7,7 +7,7 @@ FROM golang:1.24 AS build
 WORKDIR /app
 COPY --from=deps /go/pkg/mod /go/pkg/mod
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /

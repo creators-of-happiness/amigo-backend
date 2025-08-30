@@ -2,14 +2,14 @@
 
 run:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
-	go run ./...
+	go run ./cmd/api
 
 run-bin: build
 	@set -a; [ -f .env ] && . ./.env; set +a; \
 	./bin/app
 
 build:
-	@CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/app .
+	@CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/app ./cmd/api
 
 test:
 	@go test ./...

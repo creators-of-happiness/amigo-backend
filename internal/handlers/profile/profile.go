@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/creators-of-happiness/amigo-backend/internal/middleware"
+	"github.com/creators-of-happiness/amigo-backend/internal/util"
 )
 
 func Register(v1 *gin.RouterGroup, pool *pgxpool.Pool, authSecret string) {
@@ -77,7 +78,7 @@ func Register(v1 *gin.RouterGroup, pool *pgxpool.Pool, authSecret string) {
 	me.PATCH("/gender", func(c *gin.Context) {
 		uid := c.GetString("uid")
 		var in struct {
-			Gender string `json:"gender" binding:"required"`
+			Gender string `json:"gender" binding:"required,oneof=male female other"`
 		}
 		if err := c.ShouldBindJSON(&in); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -97,7 +98,7 @@ func Register(v1 *gin.RouterGroup, pool *pgxpool.Pool, authSecret string) {
 	me.PATCH("/birthdate", func(c *gin.Context) {
 		uid := c.GetString("uid")
 		var in struct {
-			Birthdate string `json:"birthdate" binding:"required"`
+			Birthdate string `json:"birthdate" binding:"required,datetime=2006-01-02"`
 		}
 		if err := c.ShouldBindJSON(&in); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -193,7 +194,7 @@ func Register(v1 *gin.RouterGroup, pool *pgxpool.Pool, authSecret string) {
 	me.PATCH("/photo", func(c *gin.Context) {
 		uid := c.GetString("uid")
 		var in struct {
-			URL string `json:"url" binding:"required"`
+			URL string `json:"url" binding:"required,uri"`
 		}
 		if err := c.ShouldBindJSON(&in); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -204,8 +205,12 @@ func Register(v1 *gin.RouterGroup, pool *pgxpool.Pool, authSecret string) {
 
 		// media_asset 생성
 		var assetID string
-		if err := pool.QueryRow(ctx, `INSERT INTO media_asset (id, kind, url) VALUES (gen_random_uuid(),'image',$1) RETURNING id`, in.URL).Scan(&assetID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if err := pool.QueryRow(ctx, `INSERT INTO media_asset (kind, url) VALUES ('image', $1) RETURNING id`, in.URL).Scan(&assetID); err != nil {
+			if util.IsClientInputError(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			}
 			return
 		}
 
@@ -214,14 +219,18 @@ func Register(v1 *gin.RouterGroup, pool *pgxpool.Pool, authSecret string) {
 			VALUES ($1, $2, now(), now())
 			ON CONFLICT (user_id) DO UPDATE SET profile_image_id=EXCLUDED.profile_image_id, updated_at=now()`, uid, assetID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			if util.IsClientInputError(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			}
 			return
 		}
 
 		// 업로드 로그(선택)
 		_, _ = pool.Exec(ctx, `
-			INSERT INTO user_face_upload (id, user_id, url, status, created_at)
-			VALUES (gen_random_uuid(), $1, $2, 'uploaded', now())`, uid, in.URL)
+			INSERT INTO user_face_upload (user_id, url, status, created_at)
+			VALUES ($1, $2, 'uploaded', now())`, uid, in.URL)
 
 		c.JSON(http.StatusOK, gin.H{"ok": true, "asset_id": assetID})
 	})

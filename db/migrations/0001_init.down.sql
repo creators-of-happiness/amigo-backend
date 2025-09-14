@@ -17,3 +17,6 @@ DROP TABLE IF EXISTS user_profile;
 DROP TABLE IF EXISTS region;
 
 DROP TABLE IF EXISTS app_users;
+
+-- 확장은 보통 유지합니다. 꼭 필요할 때만 내리세요.
+-- DROP EXTENSION IF EXISTS pgcrypto;

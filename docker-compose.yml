@@ -63,5 +63,35 @@ services:
       api:
         condition: service_started
 
+  migrate_test:
+    image: migrate/migrate:latest
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB_TEST}?sslmode=disable&connect_timeout=2
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db/migrations:/migrations:ro
+    entrypoint: ["/bin/sh","-c"]
+    command: >
+      "migrate -path /migrations -database $$DATABASE_URL up"
+
+  gotest:
+    image: golang:1.24
+    working_dir: /src
+    env_file: .env
+    volumes:
+      - .:/src
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB_TEST}?sslmode=disable&connect_timeout=2
+      - GIN_MODE=test
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate_test:
+        condition: service_completed_successfully
+    command: ["go","test","-v","-count=1","./..."]
+
 volumes:
   postgres-data:

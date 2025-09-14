@@ -1,67 +1,147 @@
 openapi: 3.0.3
 info:
-  title: amigo-backend API
-  version: "0.1.0"
-  description: >
-    Simple backend with phone-based OTP auth, health checks, onboarding, and utility endpoints.
-    All paths prefixed with `/api/v1` are public API; `/liveness` and `/readiness` are root-level health endpoints.
-
+  title: Amigo Backend API
+  version: 0.1.0
+  description: |
+    Phone-based auth, onboarding/profile setup, and meta lookup APIs.
 servers:
   - url: http://localhost:8080
-    description: Local development
-  - url: /
-    description: Relative (behind reverse proxy)
-
+    description: Local (docker compose)
+  - url: https://amigo.hjyoon.me
+    description: Production (proxied via nginx)
 tags:
   - name: Health
-    description: Process and dependency health
   - name: Auth
-    description: OTP-based login
   - name: Misc
-    description: Utilities & demo endpoints
   - name: Meta
-    description: Reference data for onboarding
   - name: Profile
-    description: Step-by-step onboarding for current user
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: invalid token
+    SimpleOK:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          example: true
+    Region:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Seoul }
+        latitude: { type: number, format: double, nullable: true, example: 37.5665 }
+        longitude: { type: number, format: double, nullable: true, example: 126.978 }
+    JobCategory:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, example: dev }
+        name: { type: string, example: Developer }
+    CharacterCategory:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, example: basic }
+        name: { type: string, example: Basic }
+    CharacterItem:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid, example: "8f0f2f3a-5b2e-4b9a-9c2f-0c2d3f4a5b6c" }
+        name: { type: string, example: Character 1 }
+        preview_url: { type: string, format: uri, nullable: true }
+    BackgroundItem:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid, example: "2d4f3e7a-6a3b-4d1c-9f1a-2a3b4c5d6e7f" }
+        name: { type: string, example: Background 1 }
+        preview_url: { type: string, format: uri, nullable: true }
+    OnboardingState:
+      type: object
+      required: [nickname, gender, birthdate, region, job, avatar, photo]
+      properties:
+        nickname: { type: boolean }
+        gender: { type: boolean }
+        birthdate: { type: boolean }
+        region: { type: boolean }
+        job: { type: boolean }
+        avatar: { type: boolean }
+        photo: { type: boolean }
+    UserSummary:
+      type: object
+      required: [id, phone]
+      properties:
+        id: { type: string, format: uuid, example: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d" }
+        phone: { type: string, example: "+82 10-1234-5678" }
+        nickname:
+          type: string
+          nullable: true
+          example: hjyoon
+    TokenResponse:
+      type: object
+      required: [token_type, access_token, expires_in, user]
+      properties:
+        token_type: { type: string, example: Bearer }
+        access_token: { type: string, example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... }
+        expires_in: { type: integer, description: Seconds until expiration, example: 86400 }
+        user:
+          $ref: "#/components/schemas/UserSummary"
 
 paths:
   /liveness:
     get:
       tags: [Health]
       summary: Liveness probe
-      description: Always returns OK if the process is alive.
       responses:
         "200":
-          description: Service is alive
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
-
+                type: object
+                properties:
+                  status: { type: string, example: ok }
   /readiness:
     get:
       tags: [Health]
-      summary: Readiness probe
-      description: Checks DB connectivity and returns overall status.
+      summary: Readiness probe with DB ping
       responses:
         "200":
           description: Ready
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                type: object
+                properties:
+                  status: { type: string, example: ok }
         "503":
-          description: Degraded / not ready
+          description: DB not ready
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                type: object
+                properties:
+                  status: { type: string, example: degraded }
+                  db: { type: string, example: "connection refused" }
 
   /api/v1/ping:
     get:
       tags: [Misc]
-      summary: Ping
-      description: Returns a simple pong payload.
+      summary: Health check (app)
       responses:
         "200":
           description: Pong
@@ -70,152 +150,129 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                    example: pong
+                  message: { type: string, example: pong }
 
   /api/v1/dbtime:
     get:
       tags: [Misc]
-      summary: Database time
-      description: Returns the current timestamp from PostgreSQL (`SELECT NOW()`).
+      summary: Current DB time
       responses:
         "200":
-          description: Current DB timestamp
+          description: Current time (from DB)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DBTime"
-        "500":
-          description: DB error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  now: { type: string, format: date-time }
 
   /api/v1/me:
     get:
       tags: [Misc]
       summary: Current user info
-      description: Returns the authenticated user's id/phone/nickname. Requires Bearer token.
-      security:
-        - BearerAuth: []
+      security: [{ BearerAuth: [] }]
       responses:
         "200":
-          description: Current user
+          description: Current user summary
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MeResponse"
+                $ref: "#/components/schemas/UserSummary"
         "401":
-          description: Missing or invalid token
+          description: Unauthorized
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/auth/request-code:
     post:
       tags: [Auth]
-      summary: Request OTP code (dev mode)
-      description: >
-        Logs an OTP request and **returns a fixed dev hint code** (no SMS is sent).
-        The fixed code and expiration are configured via environment variables.
+      summary: Request verification code (dev mode uses fixed code)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AuthRequestCodeRequest"
-            examples:
-              default:
-                value:
-                  phone: "+82 10-1234-5678"
-                  purpose: "login"
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  description: E.164 or relaxed format
+                  example: "+82 10-1234-5678"
+                purpose:
+                  type: string
+                  description: Defaults to "login"
+                  example: login
       responses:
         "200":
-          description: Code issued (dev mode)
+          description: Code requested
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthRequestCodeResponse"
-              examples:
-                default:
-                  value:
-                    ok: true
-                    message: "verification code sent (dev: fixed code active)"
-                    dev_hintCode: "000000"
+                type: object
+                required: [ok, message]
+                properties:
+                  ok: { type: boolean, example: true }
+                  message: { type: string, example: verification code sent }
+                  dev_hintCode:
+                    type: string
+                    description: Present in dev; last 3 digits are hinted in logs
+                    example: "000000"
         "400":
-          description: Invalid input (e.g., bad phone format)
+          description: Invalid phone format
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/auth/verify:
     post:
       tags: [Auth]
-      summary: Verify OTP and issue access token
-      description: >
-        Verifies the provided code against the **fixed dev code**.
-        On first login, a user record is created. Returns a signed JWT access token.
+      summary: Verify code and get access token
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AuthVerifyRequest"
-            examples:
-              default:
-                value:
-                  phone: "+82 10-1234-5678"
-                  code: "000000"
-                  nickname: "hyo"
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string, example: "+82 10-1234-5678" }
+                code: { type: string, example: "000000" }
+                nickname:
+                  type: string
+                  description: Optional nickname to set on first login
+                  example: hjyoon
       responses:
         "200":
-          description: Authenticated; token issued
+          description: Token issued
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AuthVerifyResponse"
-              examples:
-                default:
-                  value:
-                    token_type: "Bearer"
-                    access_token: "<jwt>"
-                    expires_in: 86399
-                    user:
-                      id: "8a4f2f0a-0c2a-4a86-8a60-6d6d9b1b5a6a"
-                      phone: "+82 10-1234-5678"
-                      nickname: "hyo"
+              schema: { $ref: "#/components/schemas/TokenResponse" }
         "400":
-          description: Invalid input (e.g., bad phone format, missing fields)
+          description: Invalid input
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Invalid code
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              schema: { $ref: "#/components/schemas/Error" }
         "500":
-          description: Server error (e.g., DB write failure)
+          description: Token signing or DB error
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/meta/regions:
     get:
       tags: [Meta]
       summary: List regions
-      security:
-        - BearerAuth: []
+      security: [{ BearerAuth: [] }]
       responses:
         "200":
-          description: Regions
+          description: Region list
           content:
             application/json:
               schema:
@@ -223,20 +280,18 @@ paths:
                 properties:
                   items:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        id: { type: integer }
-                        name: { type: string }
-                        latitude: { type: number, format: double, nullable: true }
-                        longitude: { type: number, format: double, nullable: true }
+                    items: { $ref: "#/components/schemas/Region" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/meta/job-categories:
     get:
       tags: [Meta]
       summary: List job categories
-      security:
-        - BearerAuth: []
+      security: [{ BearerAuth: [] }]
       responses:
         "200":
           description: Job categories
@@ -247,18 +302,18 @@ paths:
                 properties:
                   items:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        code: { type: string }
-                        name: { type: string }
+                    items: { $ref: "#/components/schemas/JobCategory" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/meta/character-categories:
     get:
       tags: [Meta]
       summary: List character categories
-      security:
-        - BearerAuth: []
+      security: [{ BearerAuth: [] }]
       responses:
         "200":
           description: Character categories
@@ -269,22 +324,24 @@ paths:
                 properties:
                   items:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        code: { type: string }
-                        name: { type: string }
+                    items: { $ref: "#/components/schemas/CharacterCategory" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/meta/characters:
     get:
       tags: [Meta]
-      summary: List characters
-      security:
-        - BearerAuth: []
+      summary: List characters (optionally filter by category)
+      security: [{ BearerAuth: [] }]
       parameters:
         - in: query
           name: category
           schema: { type: string }
+          required: false
+          description: Filter by character_category.code
       responses:
         "200":
           description: Characters
@@ -295,19 +352,18 @@ paths:
                 properties:
                   items:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        id: { type: string }
-                        name: { type: string }
-                        preview_url: { type: string, nullable: true }
+                    items: { $ref: "#/components/schemas/CharacterItem" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/meta/backgrounds:
     get:
       tags: [Meta]
       summary: List backgrounds
-      security:
-        - BearerAuth: []
+      security: [{ BearerAuth: [] }]
       responses:
         "200":
           description: Backgrounds
@@ -318,41 +374,35 @@ paths:
                 properties:
                   items:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        id: { type: string }
-                        name: { type: string }
-                        preview_url: { type: string, nullable: true }
+                    items: { $ref: "#/components/schemas/BackgroundItem" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/me/onboarding-state:
     get:
       tags: [Profile]
-      summary: Onboarding completion flags
-      security:
-        - BearerAuth: []
+      summary: Flags that indicate which onboarding steps are completed
+      security: [{ BearerAuth: [] }]
       responses:
         "200":
-          description: Flags by step
+          description: Onboarding status flags
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  nickname: { type: boolean }
-                  gender: { type: boolean }
-                  birthdate: { type: boolean }
-                  region: { type: boolean }
-                  job: { type: boolean }
-                  avatar: { type: boolean }
-                  photo: { type: boolean }
+              schema: { $ref: "#/components/schemas/OnboardingState" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/me/nickname:
     patch:
       tags: [Profile]
-      summary: Set nickname
-      security:
-        - BearerAuth: []
+      summary: Set or update nickname
+      security: [{ BearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -361,17 +411,22 @@ paths:
               type: object
               required: [nickname]
               properties:
-                nickname: { type: string, minLength: 1, maxLength: 30 }
+                nickname:
+                  type: string
+                  minLength: 1
+                  maxLength: 30
+                  example: hjyoon
       responses:
-        "200":
-          description: OK
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SimpleOK" }}}}
+        "400": { description: Validation error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "401": { description: Unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "500": { description: DB error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
 
   /api/v1/me/gender:
     patch:
       tags: [Profile]
       summary: Set gender
-      security:
-        - BearerAuth: []
+      security: [{ BearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -384,15 +439,16 @@ paths:
                   type: string
                   enum: [male, female, other]
       responses:
-        "200":
-          description: OK
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SimpleOK" }}}}
+        "400": { description: Validation error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "401": { description: Unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "500": { description: DB error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
 
   /api/v1/me/birthdate:
     patch:
       tags: [Profile]
       summary: Set birth date (YYYY-MM-DD)
-      security:
-        - BearerAuth: []
+      security: [{ BearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -401,17 +457,20 @@ paths:
               type: object
               required: [birthdate]
               properties:
-                birthdate: { type: string, format: date }
+                birthdate:
+                  type: string
+                  format: date
+                  example: "1990-01-01"
       responses:
-        "200":
-          description: OK
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SimpleOK" }}}}
+        "400": { description: Validation or constraint error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "401": { description: Unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
 
   /api/v1/me/region:
     patch:
       tags: [Profile]
-      summary: Set region
-      security:
-        - BearerAuth: []
+      summary: Set region (by region.id)
+      security: [{ BearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -420,17 +479,20 @@ paths:
               type: object
               required: [region_id]
               properties:
-                region_id: { type: integer, minimum: 1 }
+                region_id:
+                  type: integer
+                  minimum: 1
+                  example: 1
       responses:
-        "200":
-          description: OK
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SimpleOK" }}}}
+        "400": { description: Validation/foreign key error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "401": { description: Unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
 
   /api/v1/me/job:
     put:
       tags: [Profile]
-      summary: Set job
-      security:
-        - BearerAuth: []
+      summary: Upsert job
+      security: [{ BearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -439,18 +501,23 @@ paths:
               type: object
               required: [category]
               properties:
-                category: { type: string, description: job_category.code }
-                detail: { type: string }
+                category:
+                  type: string
+                  description: job_category.code
+                  example: dev
+                detail:
+                  type: string
+                  example: "Backend/Platform"
       responses:
-        "200":
-          description: OK
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SimpleOK" }}}}
+        "400": { description: Validation/foreign key error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "401": { description: Unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
 
   /api/v1/me/avatar:
     put:
       tags: [Profile]
-      summary: Set avatar (character + background)
-      security:
-        - BearerAuth: []
+      summary: Upsert avatar (character + background)
+      security: [{ BearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -459,19 +526,25 @@ paths:
               type: object
               required: [character_id, bg_id]
               properties:
-                category_code: { type: string, nullable: true }
-                character_id: { type: string }
-                bg_id: { type: string }
+                category_code:
+                  type: string
+                  description: Optional; character_category.code
+                character_id:
+                  type: string
+                  format: uuid
+                bg_id:
+                  type: string
+                  format: uuid
       responses:
-        "200":
-          description: OK
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SimpleOK" }}}}
+        "400": { description: Validation/foreign key error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
+        "401": { description: Unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" }}}}
 
   /api/v1/me/photo:
     patch:
       tags: [Profile]
-      summary: Set profile photo by URL
-      security:
-        - BearerAuth: []
+      summary: Set profile photo by URL (creates media_asset)
+      security: [{ BearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -480,139 +553,33 @@ paths:
               type: object
               required: [url]
               properties:
-                url: { type: string, format: uri }
+                url:
+                  type: string
+                  format: uri
+                  example: https://example.com/me.jpg
       responses:
         "200":
-          description: OK
-
-components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
-  schemas:
-    HealthStatus:
-      type: object
-      properties:
-        status:
-          type: string
-          description: Overall status ("ok" or "degraded")
-          example: ok
-        db:
-          type: string
-          nullable: true
-          description: Optional DB error details when degraded
-      required:
-        - status
-
-    DBTime:
-      type: object
-      properties:
-        now:
-          type: string
-          format: date-time
-          example: "2025-08-31T07:20:00+09:00"
-      required:
-        - now
-
-    MeResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          description: User UUID (from JWT claim)
-          example: "8a4f2f0a-0c2a-4a86-8a60-6d6d9b1b5a6a"
-        phone:
-          type: string
-          example: "+82 10-1234-5678"
-        nickname:
-          type: string
-          nullable: true
-          example: "hyo"
-      required: [id, phone]
-
-    AuthRequestCodeRequest:
-      type: object
-      properties:
-        phone:
-          type: string
-          description: E.164-like or liberal phone format accepted by backend
-          example: "+82 10-1234-5678"
-        purpose:
-          type: string
-          description: Purpose of the OTP
-          default: login
-          example: login
-      required: [phone]
-
-    AuthRequestCodeResponse:
-      type: object
-      properties:
-        ok:
-          type: boolean
-          example: true
-        message:
-          type: string
-          example: "verification code sent (dev: fixed code active)"
-        dev_hintCode:
-          type: string
-          description: Fixed code for development
-          example: "000000"
-      required: [ok, message]
-
-    AuthVerifyRequest:
-      type: object
-      properties:
-        phone:
-          type: string
-          example: "+82 10-1234-5678"
-        code:
-          type: string
-          example: "000000"
-        nickname:
-          type: string
-          description: Optional nickname for first-time users
-          example: "hyo"
-      required: [phone, code]
-
-    AuthVerifyResponse:
-      type: object
-      properties:
-        token_type:
-          type: string
-          example: Bearer
-        access_token:
-          type: string
-          description: JWT access token (HS256)
-          example: "<jwt>"
-        expires_in:
-          type: integer
-          description: Token lifetime in seconds
-          example: 86400
-        user:
-          $ref: "#/components/schemas/User"
-      required: [token_type, access_token, expires_in, user]
-
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-          example: "8a4f2f0a-0c2a-4a86-8a60-6d6d9b1b5a6a"
-        phone:
-          type: string
-          example: "+82 10-1234-5678"
-        nickname:
-          type: string
-          nullable: true
-          example: "hyo"
-      required: [id, phone]
-
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-          example: "invalid token"
+          description: OK + created asset id
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, asset_id]
+                properties:
+                  ok: { type: boolean, example: true }
+                  asset_id: { type: string, format: uuid }
+        "400":
+          description: Validation error (URL or DB casting)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: DB insert error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

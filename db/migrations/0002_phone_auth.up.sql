@@ -1,9 +1,9 @@
--- 단순 OTP 요청 로깅 테이블 (임시 고정코드 기반이라 검증용 메트릭/리밋 용도)
+-- OTP request log (dev / metrics / rate-limit)
 CREATE TABLE IF NOT EXISTS otp_requests (
-  id         UUID PRIMARY KEY,
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone      TEXT NOT NULL,
   purpose    TEXT NOT NULL DEFAULT 'login',
-  code_hint  TEXT,                           -- 저장시 마스킹된 힌트(예: "***000")
+  code_hint  TEXT,
   expires_at TIMESTAMPTZ NOT NULL,
   used_at    TIMESTAMPTZ,
   ip         INET,
